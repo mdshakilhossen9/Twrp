@@ -1,0 +1,55 @@
+name: OrangeFox Recovery Builder (merlinx)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git-core default-jdk repo gcc g++ make python3 zip unzip bc \
+            ccache libncurses5-dev flex bison gperf build-essential libssl-dev curl zlib1g-dev
+
+    - name: Sync OrangeFox Source
+      run: |
+        mkdir orangefox
+        cd orangefox
+        repo init -u https://gitlab.com/OrangeFox/Manifest.git -b fox_12.1
+        repo sync -j$(nproc --all)
+
+    - name: Add Device Tree
+      run: |
+        cd orangefox
+        git clone https://github.com/itsaschoolbus-stuff/android_device_xiaomi_merlinx \
+          device/xiaomi/merlinx
+
+    - name: Build OrangeFox (merlinx)
+      run: |
+        cd orangefox
+        export ALLOW_MISSING_DEPENDENCIES=true
+        source build/envsetup.sh
+        lunch omni_merlinx-eng
+        mka recoveryimage -j$(nproc --all)
+
+    - name: Upload Recovery Image
+      uses: actions/upload-artifact@v3
+      with:
+        name: orangefox_merlinx_recovery
+        path: orangefox/out/target/product/merlinx/recovery.img
+
+    - name: Create Release with Recovery Image
+      uses: softprops/action-gh-release@v1
+      with:
+        files: orangefox/out/target/product/merlinx/recovery.img
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
